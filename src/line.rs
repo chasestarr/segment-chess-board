@@ -5,6 +5,35 @@ use imageproc::hough::{detect_lines, LineDetectionOptions, PolarLine};
 
 use crate::debug;
 
+pub fn intersection(
+  a_start: (f32, f32),
+  a_end: (f32, f32),
+  b_start: (f32, f32),
+  b_end: (f32, f32),
+) -> Option<(f32, f32)> {
+  let (self_start_x, self_start_y) = a_start;
+  let (self_end_x, self_end_y) = a_end;
+  let (other_start_x, other_start_y) = b_start;
+  let (other_end_x, other_end_y) = b_end;
+
+  let a_self = self_end_y - self_start_y;
+  let b_self = self_start_x - self_end_x;
+  let c_self = a_self * self_start_x + b_self * self_start_y;
+
+  let a_other = other_end_y - other_start_y;
+  let b_other = other_start_x - other_end_x;
+  let c_other = a_other * other_start_x + b_other * other_start_y;
+
+  let determinant = a_self * b_other - a_other * b_self;
+  if determinant == 0.0 {
+    return None;
+  }
+
+  let x = (b_other * c_self - b_self * c_other) / determinant;
+  let y = (a_self * c_other - a_other * c_self) / determinant;
+  return Some((x, y));
+}
+
 #[derive(Debug)]
 pub struct Line {
   pub start: (f32, f32),
@@ -17,27 +46,7 @@ impl Line {
   }
 
   pub fn intersection(&self, other: &Line) -> Option<(f32, f32)> {
-    let (self_start_x, self_start_y) = self.start;
-    let (self_end_x, self_end_y) = self.end;
-    let (other_start_x, other_start_y) = other.start;
-    let (other_end_x, other_end_y) = other.end;
-
-    let a_self = self_end_y - self_start_y;
-    let b_self = self_start_x - self_end_x;
-    let c_self = a_self * self_start_x + b_self * self_start_y;
-
-    let a_other = other_end_y - other_start_y;
-    let b_other = other_start_x - other_end_x;
-    let c_other = a_other * other_start_x + b_other * other_start_y;
-
-    let determinant = a_self * b_other - a_other * b_self;
-    if determinant == 0.0 {
-      return None;
-    }
-
-    let x = (b_other * c_self - b_self * c_other) / determinant;
-    let y = (a_self * c_other - a_other * c_self) / determinant;
-    return Some((x, y));
+    return intersection(self.start, self.end, other.start, other.end);
   }
 }
 
@@ -119,7 +128,7 @@ fn polar_line_points(line: PolarLine, image_width: u32, image_height: u32) -> Op
   None
 }
 
-pub fn get_lines(i: &GrayImage) -> Vec<Line> {
+pub fn get_lines(i: &GrayImage, vote_threshold: u32, suppression_radius: u32) -> Vec<Line> {
   let edges = canny(&i, 50.0, 80.0);
   debug::write_gray(&edges, "line-canny");
   let (image_width, image_height) = i.dimensions();
@@ -127,12 +136,12 @@ pub fn get_lines(i: &GrayImage) -> Vec<Line> {
   let lines = detect_lines(
     &edges,
     LineDetectionOptions {
-      vote_threshold: 100,
-      suppression_radius: 30,
+      vote_threshold,
+      suppression_radius,
     },
   );
 
-  if std::env::var("DEBUG").is_ok() {
+  if crate::debug::debug_images() {
     let mut lines_image = DynamicImage::ImageLuma8(i.clone()).to_rgb8();
     let len = lines.len();
     for index in 0..lines.len() {

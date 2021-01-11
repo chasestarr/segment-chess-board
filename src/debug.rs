@@ -1,10 +1,13 @@
 use image::{GrayImage, RgbImage};
-use std::env;
 use std::fs;
 use std::path::Path;
 
+pub fn debug_images() -> bool {
+  return std::env::var("DEBUG").is_ok();
+}
+
 pub fn write_gray(i: &GrayImage, name: &str) {
-  if env::var("DEBUG").is_ok() {
+  if debug_images() {
     let output_dir = Path::new("./tmp");
     if !output_dir.is_dir() {
       fs::create_dir(output_dir).expect("Failed to create output directory")
@@ -16,7 +19,7 @@ pub fn write_gray(i: &GrayImage, name: &str) {
 }
 
 pub fn write_rgb(i: &RgbImage, name: &str) {
-  if env::var("DEBUG").is_ok() {
+  if debug_images() {
     let output_dir = Path::new("./tmp");
     if !output_dir.is_dir() {
       fs::create_dir(output_dir).expect("Failed to create output directory")

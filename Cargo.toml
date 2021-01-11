@@ -1,5 +1,5 @@
 [package]
-name = "segment-chess-board"
+name = "segment_chess_board"
 version = "0.1.0"
 authors = ["Chase Starr <chasestarr@gmail.com>"]
 edition = "2018"

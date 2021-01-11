@@ -35,14 +35,14 @@ fn get_circle(i: &GrayImage, x: u32, y: u32, r: u32) -> Option<Vec<u8>> {
 }
 
 fn is_corner(i: &GrayImage, x: u32, y: u32) -> bool {
-  let r = 5;
+  let r = 6;
   match get_circle(i, x, y, r) {
     Some(values) => {
-      if std::env::var("DEBUG").is_ok() {
-        let cropped =
-          image::imageops::crop_imm(i, x - r + 1, y - r + 1, r * 2 + 1, r * 2 + 1).to_image();
-        debug::write_gray(&cropped, format!("lattice-corner-{}-{}", y, x).as_str());
-      }
+      // if crate::debug::debug_images() {
+      //   let cropped =
+      //     image::imageops::crop_imm(i, x - r + 1, y - r + 1, r * 2 + 1, r * 2 + 1).to_image();
+      //   debug::write_gray(&cropped, format!("lattice-corner-{}-{}", y, x).as_str());
+      // }
 
       let input: Vec<f64> = values.iter().map(|v| *v as f64).collect();
       let mut fft = RFft1D::<f64>::new(values.len());
@@ -124,13 +124,9 @@ pub fn get_points(i: &GrayImage, lines: &Vec<Line>) -> Vec<(f32, f32)> {
     }
   }
 
-  println!("{}", all_corner_points.len());
-
   let corner_points = unique_within_dist(&all_corner_points, 5.0);
 
-  println!("{}", corner_points.len());
-
-  if std::env::var("DEBUG").is_ok() {
+  if crate::debug::debug_images() {
     let mut intersection_image = DynamicImage::ImageLuma8(i.clone()).to_rgb8();
     let red = Rgb::<u8>([255, 0, 0]);
     let green = Rgb::<u8>([0, 255, 0]);
