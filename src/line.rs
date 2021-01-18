@@ -159,9 +159,8 @@ pub fn get_lines(i: &GrayImage, vote_threshold: u32, suppression_radius: u32) ->
 
   let mut lines_points: Vec<Line> = Vec::new();
   for line in lines {
-    match polar_line_points(line, image_width, image_height) {
-      Some(l) => lines_points.push(l),
-      None => {}
+    if let Some(l) = polar_line_points(line, image_width, image_height) {
+      lines_points.push(l);
     }
   }
   return lines_points;

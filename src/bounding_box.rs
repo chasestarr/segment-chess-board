@@ -1,6 +1,3 @@
-use crate::line::intersection;
-
-use std::cmp::Ordering;
 use std::collections::HashMap;
 
 fn points_in_bounds(points: &Vec<(f32, f32)>, (w, h): (u32, u32)) -> Vec<(f32, f32)> {
@@ -24,41 +21,24 @@ fn points_center(points: &Vec<(f32, f32)>) -> (f32, f32) {
   return (x_sum / len, y_sum / len);
 }
 
-// https://stackoverflow.com/questions/6989100/sort-points-in-clockwise-order
+fn angle_between_vectors(start: (f32, f32), end: (f32, f32)) -> f32 {
+  let opposite = start.1 - end.1;
+  let adjacent = end.0 - start.0;
+  let mut angle = opposite.atan2(adjacent);
+  if angle < 0.0 {
+    angle = angle + std::f32::consts::PI * 2.0;
+  }
+  let deg = angle * (180.0 / std::f32::consts::PI);
+  return deg;
+}
+
 fn sorted_clockwise(p: &Vec<(f32, f32)>) -> Vec<(f32, f32)> {
   let mut points = p.clone();
   let (cx, cy) = points_center(&points);
-  points.sort_by(|(ax, ay), (bx, by)| {
-    if ax - cx >= 0.0 && bx - cx < 0.0 {
-      return Ordering::Greater;
-    }
-    if ax - cx < 0.0 && bx - cx >= 0.0 {
-      return Ordering::Less;
-    }
-    if ax - cx == 0.0 && bx - cx == 0.0 {
-      if ay - cy >= 0.0 || by - cy >= 0.0 {
-        if ay > by {
-          return Ordering::Greater;
-        } else {
-          return Ordering::Less;
-        }
-      }
-      if by > ay {
-        return Ordering::Greater;
-      } else {
-        return Ordering::Less;
-      }
-    }
-
-    let det = (ax - cy) * (by - cy) - (bx - cx) * (ay - cy);
-    if det < 0.0 {
-      return Ordering::Greater;
-    }
-    if det > 0.0 {
-      return Ordering::Greater;
-    }
-
-    return Ordering::Equal;
+  points.sort_by(|a, b| {
+    let a_deg = angle_between_vectors((1.0, 0.0), sub(*a, (cx, cy)));
+    let b_deg = angle_between_vectors((1.0, 0.0), sub(*b, (cx, cy)));
+    return a_deg.partial_cmp(&b_deg).unwrap();
   });
   return points;
 }
@@ -98,13 +78,37 @@ fn normalized((x, y): (f32, f32)) -> (f32, f32) {
   return (x / len, y / len);
 }
 
-fn dist((ax, ay): (f32, f32), (bx, by): (f32, f32)) -> f32 {
-  let dist_squared = (ax - bx).powf(2.0) + (ay - by).powf(2.0);
-  return dist_squared.sqrt();
+pub fn dist_squared((ax, ay): (f32, f32), (bx, by): (f32, f32)) -> f32 {
+  return (ax - bx).powf(2.0) + (ay - by).powf(2.0);
 }
 
-fn transpose(i: (f32, f32), j: (f32, f32), p: (f32, f32)) -> (f32, f32) {
+fn change_basis(i: (f32, f32), j: (f32, f32), p: (f32, f32)) -> (f32, f32) {
   return (i.0 * p.0 + i.1 * p.1, j.0 * p.0 + j.1 * p.1);
+}
+
+fn transpose(points: &Vec<(f32, f32)>) -> [Vec<f32>; 2] {
+  let mut x = Vec::new();
+  let mut y = Vec::new();
+  for p in points.iter() {
+    x.push(p.0);
+    y.push(p.1);
+  }
+  return [x, y];
+}
+
+fn rotate_points(basis: [[f32; 2]; 2], points: &Vec<(f32, f32)>) -> Vec<(f32, f32)> {
+  let transposed = transpose(points);
+  let mut x = Vec::new();
+  let mut y = Vec::new();
+  for i in 0..points.len() {
+    x.push(basis[0][0] * transposed[0][i] + basis[0][1] * transposed[1][i]);
+    y.push(basis[1][0] * transposed[0][i] + basis[1][1] * transposed[1][i]);
+  }
+  let mut result = Vec::new();
+  for i in 0..points.len() {
+    result.push((x[i], y[i]));
+  }
+  return result;
 }
 
 // https://www.geometrictools.com/GTE/Mathematics/MinimumAreaBox2.h
@@ -114,7 +118,7 @@ fn remove_colinear_points(points: &Vec<(f32, f32)>) -> Vec<(f32, f32)> {
   for i in 0..points.len() {
     let edge_next = sub(points[i], points[(i + 1) % points.len()]);
     let dp = dot_product(edge_prev, perp(edge_next));
-    if dp.abs() > 0.01 {
+    if dp.abs() > 0.1 {
       result.push(points[i]);
     }
     edge_prev = edge_next;
@@ -172,50 +176,37 @@ pub fn convex_hull_area(hull: &Vec<(f32, f32)>) -> f32 {
   return area.abs() / 2.0;
 }
 
-fn mbb_smallest_box(i0: usize, i1: usize, points: &Vec<(f32, f32)>) -> [(f32, f32); 4] {
-  let ui = sub(points[i1], points[i0]);
-  let uj = mult(perp(ui), -1.0);
-  let mut box_index = [i1, i1, i1, i1];
-  let origin = points[i1];
-  let mut support: [(f32, f32); 4] = [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)];
-  let mut i = 0;
-  for point in points.iter() {
-    let diff = sub(*point, origin);
-    let v = (dot_product(ui, diff), dot_product(uj, diff));
-    if v.0 > support[1].0 || (v.0 == support[1].0 && v.1 > support[1].1) {
-      box_index[1] = i;
-      support[1] = v;
-    }
-    if v.1 > support[2].1 || (v.1 == support[2].1 && v.0 < support[2].0) {
-      box_index[2] = i;
-      support[2] = v;
-    }
-    if v.0 < support[3].0 || (v.1 == support[3].0 && v.1 < support[3].1) {
-      box_index[3] = i;
-      support[3] = v;
-    }
-    i += 1;
-  }
-
-  return support;
-}
-
 fn triangle_area(points: [(f32, f32); 3]) -> f32 {
   let [(x1, y1), (x2, y2), (x3, y3)] = points;
   return ((x1 * y2 + x2 * y3 + x3 * y1 - y1 * x2 - y2 * x3 - y3 * x1) / 2.0).abs();
 }
 
-fn bounding_box_area(points: [(f32, f32); 4]) -> f32 {
+pub fn bounding_box_area(points: [(f32, f32); 4]) -> f32 {
   let t1 = [points[0], points[1], points[2]];
   let t2 = [points[0], points[2], points[3]];
   return triangle_area(t1) + triangle_area(t2);
+}
+
+pub fn bounding_box_sort(points: [(f32, f32); 4]) -> [(f32, f32); 4] {
+  let mut sorted_by_y = points.clone().to_vec();
+  sorted_by_y.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+  let mut top = vec![sorted_by_y[0], sorted_by_y[1]];
+  if top[1].0 < top[0].0 {
+    top = vec![top[1], top[0]];
+  }
+  let mut bottom = vec![sorted_by_y[2], sorted_by_y[3]];
+  if bottom[1].0 < bottom[0].0 {
+    bottom = vec![bottom[1], bottom[0]];
+  }
+  return [top[0], top[1], bottom[1], bottom[0]];
 }
 
 pub fn bounding_box_offset(points: [(f32, f32); 4], offset: f32) -> [(f32, f32); 4] {
   let mut offsets = Vec::new();
   for i in 0..points.len() {
     let edge = sub(points[(i + 1) % points.len()], points[i]);
-    offsets.push(mult(normalized(perp(edge)), offset));
+    offsets.push(mult(normalized(perp(edge)), -offset));
   }
 
   [
@@ -227,24 +218,25 @@ pub fn bounding_box_offset(points: [(f32, f32); 4], offset: f32) -> [(f32, f32);
 }
 
 // https://github.com/dbworth/minimum-area-bounding-rectangle/blob/master/python/min_bounding_rect.py
-fn oriented_bounding_box(points: &Vec<(f32, f32)>) -> [(f32, f32); 4] {
+pub fn oriented_bounding_box(ps: &Vec<(f32, f32)>) -> [(f32, f32); 4] {
+  let mut points = sorted_clockwise(ps);
+  points.reverse();
+
   let mut edge_angles = Vec::new();
   for i in 0..points.len() {
-    let (x, y) = sub(points[(i + 1) % points.len()], points[i]);
-    edge_angles.push(y.atan2(x).abs());
+    let current = points[i];
+    let next = points[(i + 1) % points.len()];
+    let (x, y) = sub(next, current);
+    edge_angles.push(y.atan2(x));
   }
 
   let mut obb = (0.0, std::f32::INFINITY, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
   for i in 0..edge_angles.len() {
-    let ri = (
-      edge_angles[i].cos(),
-      (edge_angles[i] - std::f32::consts::PI / 2.0).cos(),
-    );
-    let rj = (
-      (edge_angles[i] + std::f32::consts::PI / 2.0).cos(),
-      edge_angles[i].cos(),
-    );
-    let rotated_points: Vec<(f32, f32)> = points.iter().map(|p| transpose(ri, rj, *p)).collect();
+    let ri = (edge_angles[i].cos(), -edge_angles[i].sin());
+    let rj = (edge_angles[i].sin(), edge_angles[i].cos());
+
+    let rotated_points: Vec<(f32, f32)> = points.iter().map(|p| change_basis(ri, rj, *p)).collect();
+
     let mut min_x = std::f32::INFINITY;
     let mut max_x = std::f32::NEG_INFINITY;
     let mut min_y = std::f32::INFINITY;
@@ -285,155 +277,16 @@ fn oriented_bounding_box(points: &Vec<(f32, f32)>) -> [(f32, f32); 4] {
   let max_x = obb.5;
   let min_y = obb.6;
   let max_y = obb.7;
-  let pi = (angle.cos(), (angle - std::f32::consts::PI / 2.0).cos());
-  let pj = ((angle + std::f32::consts::PI / 2.0).cos(), angle.cos());
-  return [
-    transpose(pi, pj, (max_x, min_y)),
-    transpose(pi, pj, (min_x, min_y)),
-    transpose(pi, pj, (min_x, max_y)),
-    transpose(pi, pj, (max_x, max_y)),
-  ];
-}
 
-fn oriented_bounding_box_js(a: usize, b: usize, points: &Vec<(f32, f32)>) -> [(f32, f32); 4] {
-  let mut box_area = std::f32::INFINITY;
-  let mut box_corners = [points[a], points[b], points[b], points[a]];
+  let iri = (angle.cos(), angle.sin());
+  let irj = (-angle.sin(), angle.cos());
 
-  let mut edge_directions = Vec::new();
-  for i in 0..points.len() {
-    edge_directions.push(normalized(sub(points[(i + 1) % points.len()], points[i])));
-  }
-
-  let mut min_pnt = (std::f32::INFINITY, std::f32::INFINITY);
-  let mut max_pnt = (std::f32::NEG_INFINITY, std::f32::NEG_INFINITY);
-  let mut indices = [0, 0, 0, 0];
-  for i in 0..points.len() {
-    let p = points[i];
-    if p.0 < min_pnt.0 {
-      min_pnt.0 = p.0;
-      indices[0] = i;
-    }
-    if p.0 > max_pnt.0 {
-      max_pnt.0 = p.0;
-      indices[1] = i;
-    }
-    if p.1 < min_pnt.1 {
-      min_pnt.1 = p.1;
-      indices[2] = i;
-    }
-    if p.1 > max_pnt.1 {
-      max_pnt.1 = p.1;
-      indices[3] = i;
-    }
-
-    let mut directions = [(0.0, -1.0), (0.0, 1.0), (-1.0, 0.0), (1.0, 0.0)];
-
-    for _ in 0..points.len() {
-      let phis = [
-        (dot_product(directions[0], edge_directions[indices[0]])).acos(),
-        (dot_product(directions[1], edge_directions[indices[1]])).acos(),
-        (dot_product(directions[2], edge_directions[indices[2]])).acos(),
-        (dot_product(directions[3], edge_directions[indices[3]])).acos(),
-      ];
-      let mut min_phi_index = 3;
-      for j in 0..phis.len() {
-        if phis[j] < phis[min_phi_index] {
-          min_phi_index = j;
-        }
-      }
-
-      match min_phi_index {
-        0 => {
-          directions[0] = edge_directions[0];
-          directions[1] = mult(directions[0], -1.0);
-          directions[2] = mult(perp(directions[0]), -1.0);
-          directions[3] = mult(directions[2], -1.0);
-          indices[0] = (indices[0] + 1) % points.len();
-        }
-        1 => {
-          directions[1] = edge_directions[1];
-          directions[0] = mult(directions[1], -1.0);
-          directions[2] = mult(perp(directions[0]), -1.0);
-          directions[3] = mult(directions[2], -1.0);
-          indices[1] = (indices[1] + 1) % points.len();
-        }
-        2 => {
-          directions[2] = edge_directions[2];
-          directions[3] = mult(directions[2], -1.0);
-          directions[0] = mult(perp(directions[3]), -1.0);
-          directions[1] = mult(directions[0], -1.0);
-          indices[2] = (indices[2] + 1) % points.len();
-        }
-        3 => {
-          directions[3] = edge_directions[3];
-          directions[0] = mult(directions[3], -1.0);
-          directions[1] = mult(perp(directions[0]), -1.0);
-          directions[2] = mult(directions[1], -1.0);
-          indices[3] = (indices[3] + 1) % points.len();
-        }
-        _ => {}
-      }
-
-      let top_left = intersection(
-        points[indices[0]],
-        directions[0],
-        points[indices[2]],
-        directions[2],
-      )
-      .unwrap();
-      let top_right = intersection(
-        points[indices[1]],
-        directions[1],
-        points[indices[2]],
-        directions[2],
-      )
-      .unwrap();
-      let bottom_left = intersection(
-        points[indices[3]],
-        directions[3],
-        points[indices[0]],
-        directions[0],
-      )
-      .unwrap();
-      let bottom_right = intersection(
-        points[indices[3]],
-        directions[3],
-        points[indices[1]],
-        directions[1],
-      )
-      .unwrap();
-      let area = dist(top_left, top_right) * dist(top_left, bottom_left);
-      if area < box_area {
-        box_corners = [top_left, top_right, bottom_right, bottom_left];
-        box_area = area;
-      }
-    }
-  }
-
-  return box_corners;
-}
-
-// https://www.geometrictools.com/Source/ComputationalGeometry.html
-// https://www.geometrictools.com/GTE/Mathematics/MinimumAreaBox2.h
-fn minimum_bounding_box(hull: &Vec<(f32, f32)>) -> [(f32, f32); 4] {
-  // let mut min_b = mbb_smallest_box(0, 1, hull);
-  let mut min_b = oriented_bounding_box_js(0, 1, hull);
-  let mut min_area = convex_hull_area(&min_b.to_vec());
-  for index in 1..hull.len() {
-    let mut next_index = index + 1;
-    if next_index == hull.len() {
-      next_index = 0;
-    }
-    // let next_b = mbb_smallest_box(index, next_index, hull);
-    let next_b = oriented_bounding_box_js(index, next_index, hull);
-    let next_area = convex_hull_area(&next_b.to_vec());
-    if next_area < min_area {
-      min_b = next_b;
-      min_area = next_area;
-    }
-  }
-
-  return min_b;
+  return bounding_box_sort([
+    change_basis(iri, irj, (min_x, min_y)),
+    change_basis(iri, irj, (max_x, min_y)),
+    change_basis(iri, irj, (max_x, max_y)),
+    change_basis(iri, irj, (min_x, max_y)),
+  ]);
 }
 
 pub fn bounding_box(points: &Vec<(f32, f32)>) -> [(f32, f32); 4] {
@@ -460,31 +313,10 @@ pub fn bounding_box(points: &Vec<(f32, f32)>) -> [(f32, f32); 4] {
   }
 
   let cluster_hull = convex_hull_giftwrap(&largest_cluster);
-  let mut mbb = oriented_bounding_box(&cluster_hull);
-  for i in 0..mbb.len() {
-    mbb[i] = (mbb[i].0.abs(), mbb[i].1.abs());
-  }
-
-  // let cluster_hull_area = convex_hull_area(&cluster_hull);
-  // let image_area = w as f32 * h as f32;
-  // let cluster_alpha = (convex_hull_area(&cluster_hull) / 49.0).sqrt();
-  // let cluster_beta = cluster_hull.len() as f32 * (5.0 / 100.0);
-  // let cluster_centroid = points_center(&cluster_hull);
+  let mbb = oriented_bounding_box(&cluster_hull);
 
   if crate::debug::debug_images() {
-    let mut hull_image: image::RgbImage = image::ImageBuffer::new(500, 500);
-    for i in 0..cluster_hull.len() {
-      let p = cluster_hull[i];
-      imageproc::drawing::draw_filled_circle_mut(
-        &mut hull_image,
-        (p.0 as i32, p.1 as i32),
-        5,
-        image::Rgb::<u8>([255, 255, 255]),
-      );
-    }
-
-    crate::debug::write_rgb(&hull_image, "convex-hull");
-
+    let mut hull_image: image::RgbImage = image::ImageBuffer::new(400, 400);
     for i in 0..largest_cluster.len() {
       let p = largest_cluster[i];
       imageproc::drawing::draw_filled_circle_mut(
@@ -495,38 +327,53 @@ pub fn bounding_box(points: &Vec<(f32, f32)>) -> [(f32, f32); 4] {
       );
     }
 
-    for p in mbb.iter() {
+    for i in 0..cluster_hull.len() {
+      let p = cluster_hull[i];
+      imageproc::drawing::draw_filled_circle_mut(
+        &mut hull_image,
+        (p.0 as i32, p.1 as i32),
+        5,
+        image::Rgb::<u8>([255, 255, 255]),
+      );
+      imageproc::drawing::draw_line_segment_mut(
+        &mut hull_image,
+        cluster_hull[i],
+        cluster_hull[(i + 1) % cluster_hull.len()],
+        image::Rgb::<u8>([255, 0, 100]),
+      );
+    }
+
+    for index in 0..mbb.len() {
+      let p = mbb[index];
       imageproc::drawing::draw_filled_circle_mut(
         &mut hull_image,
         (p.0 as i32, p.1 as i32),
         10,
-        image::Rgb::<u8>([255, 255, 255]),
+        image::Rgb::<u8>(crate::color::turbo(index as f32 / mbb.len() as f32)),
+      );
+      imageproc::drawing::draw_filled_circle_mut(
+        &mut hull_image,
+        (p.0 as i32, p.1 as i32),
+        3,
+        image::Rgb::<u8>([255, 0, 0]),
+      );
+      imageproc::drawing::draw_line_segment_mut(
+        &mut hull_image,
+        mbb[index],
+        mbb[(index + 1) % mbb.len()],
+        image::Rgb::<u8>([0, 255, 100]),
       );
     }
     crate::debug::write_rgb(&hull_image, "convex-hull-mbb");
   }
 
-  if crate::debug::debug_images() {
-    let mut db_clusters_image: image::RgbImage = image::ImageBuffer::new(500, 500);
-    let mut db_clusters_max = 0;
-    for c in cluster_assignments.iter() {
-      if *c > db_clusters_max {
-        db_clusters_max = *c;
-      }
-    }
-    for i in 0..points.len() {
-      let (x, y) = points[i];
-      imageproc::drawing::draw_filled_circle_mut(
-        &mut db_clusters_image,
-        (x as i32, y as i32),
-        3,
-        image::Rgb::<u8>(crate::color::turbo(
-          cluster_assignments[i] as f32 / db_clusters_max as f32,
-        )),
-      );
-    }
-    crate::debug::write_rgb(&db_clusters_image, "heat_map_clusters");
+  if cluster_hull.len() == 4 {
+    return [
+      cluster_hull[0],
+      cluster_hull[1],
+      cluster_hull[2],
+      cluster_hull[3],
+    ];
   }
-
   return mbb;
 }

@@ -1,10 +1,6 @@
 use chfft::RFft1D;
-use image::{DynamicImage, GrayImage, Rgb};
-use imageproc::drawing::{draw_hollow_circle_mut, draw_line_segment_mut};
+use image::GrayImage;
 use std::collections::HashSet;
-
-use crate::debug;
-use crate::line::Line;
 
 #[inline]
 fn get_circle(i: &GrayImage, x: u32, y: u32, r: u32) -> Option<Vec<u8>> {
@@ -35,15 +31,9 @@ fn get_circle(i: &GrayImage, x: u32, y: u32, r: u32) -> Option<Vec<u8>> {
 }
 
 fn is_corner(i: &GrayImage, x: u32, y: u32) -> bool {
-  let r = 6;
+  let r = 5;
   match get_circle(i, x, y, r) {
     Some(values) => {
-      // if crate::debug::debug_images() {
-      //   let cropped =
-      //     image::imageops::crop_imm(i, x - r + 1, y - r + 1, r * 2 + 1, r * 2 + 1).to_image();
-      //   debug::write_gray(&cropped, format!("lattice-corner-{}-{}", y, x).as_str());
-      // }
-
       let input: Vec<f64> = values.iter().map(|v| *v as f64).collect();
       let mut fft = RFft1D::<f64>::new(values.len());
       let output = fft.forward(&input);
@@ -106,17 +96,7 @@ fn unique_within_dist(points: &Vec<(f32, f32)>, r: f32) -> Vec<(f32, f32)> {
   return output;
 }
 
-pub fn get_points(i: &GrayImage, lines: &Vec<Line>) -> Vec<(f32, f32)> {
-  let mut intersection_points: Vec<(f32, f32)> = Vec::new();
-  for a in lines.iter() {
-    for b in lines.iter() {
-      match a.intersection(b) {
-        Some(point) => intersection_points.push(point),
-        None => {}
-      }
-    }
-  }
-
+pub fn get_points(i: &GrayImage, intersection_points: &Vec<(f32, f32)>) -> Vec<(f32, f32)> {
   let mut all_corner_points: Vec<(f32, f32)> = Vec::new();
   for point in intersection_points.iter() {
     if is_corner(&i, point.0 as u32, point.1 as u32) {
@@ -124,27 +104,5 @@ pub fn get_points(i: &GrayImage, lines: &Vec<Line>) -> Vec<(f32, f32)> {
     }
   }
 
-  let corner_points = unique_within_dist(&all_corner_points, 5.0);
-
-  if crate::debug::debug_images() {
-    let mut intersection_image = DynamicImage::ImageLuma8(i.clone()).to_rgb8();
-    let red = Rgb::<u8>([255, 0, 0]);
-    let green = Rgb::<u8>([0, 255, 0]);
-    let blue = Rgb::<u8>([0, 0, 255]);
-    for (x, y) in intersection_points.iter() {
-      draw_hollow_circle_mut(&mut intersection_image, (*x as i32, *y as i32), 3, red);
-    }
-    for (x, y) in corner_points.iter() {
-      draw_hollow_circle_mut(&mut intersection_image, (*x as i32, *y as i32), 15, blue);
-      draw_hollow_circle_mut(&mut intersection_image, (*x as i32, *y as i32), 3, blue);
-    }
-
-    for line in lines.iter() {
-      draw_line_segment_mut(&mut intersection_image, line.start, line.end, green);
-    }
-
-    debug::write_rgb(&intersection_image, "lattice-intersections");
-  }
-
-  return corner_points;
+  return unique_within_dist(&all_corner_points, 5.0);
 }
