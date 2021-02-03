@@ -128,6 +128,10 @@ fn remove_colinear_points(points: &Vec<(f32, f32)>) -> Vec<(f32, f32)> {
 
 // https://en.wikipedia.org/wiki/Gift_wrapping_algorithm
 fn convex_hull_giftwrap(points: &Vec<(f32, f32)>) -> Vec<(f32, f32)> {
+  if points.len() == 0 {
+    return Vec::new();
+  }
+
   let mut hull = Vec::new();
   let sorted = sorted_leftmost(points);
   let left_most = sorted[0];
@@ -291,8 +295,8 @@ pub fn oriented_bounding_box(ps: &Vec<(f32, f32)>) -> [(f32, f32); 4] {
 
 pub fn bounding_box(points: &Vec<(f32, f32)>) -> [(f32, f32); 4] {
   let hull = convex_hull_giftwrap(points);
-
-  let alpha = (convex_hull_area(&hull) / 15.0).sqrt();
+  let area = convex_hull_area(&hull);
+  let alpha = (area / 15.0).sqrt();
   let cluster_assignments = crate::cluster::dbscan(&points, alpha, 5);
   let mut point_clusters: HashMap<usize, Vec<(f32, f32)>> = HashMap::new();
   for i in 0..points.len() {
@@ -310,6 +314,10 @@ pub fn bounding_box(points: &Vec<(f32, f32)>) -> [(f32, f32); 4] {
     if cluster.len() > largest_cluster.len() {
       largest_cluster = cluster.to_vec();
     }
+  }
+  // in some cases, no significant clusters are found. use all points
+  if largest_cluster.len() < 4 {
+    largest_cluster = points.clone();
   }
 
   let cluster_hull = convex_hull_giftwrap(&largest_cluster);

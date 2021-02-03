@@ -4,9 +4,14 @@ use std::path::Path;
 
 fn main() {
   // let input_path = Path::new("images/camera_01.png");
-  let input_path = Path::new("images/camera_02.png");
+  // let input_path = Path::new("images/camera_02.png");
   // let input_path = Path::new("images/camera_03.png");
   // let input_path = Path::new("images/camera_03_warped_02.png");
+  // let input_path = Path::new("images/camera_04.png");
+  // let input_path = Path::new("images/camera_05.png");
+  // let input_path = Path::new("images/camera_05_warped.png");
+  // let input_path = Path::new("images/camera_06.png");
+  let input_path = Path::new("images/camera_07.png");
   // let input_path = Path::new("images/screenshot_02.png");
   // let input_path = Path::new("images/screenshot_03.png");
   // let input_path = Path::new("images/camera_01_warped.png");

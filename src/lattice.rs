@@ -30,7 +30,7 @@ fn get_circle(i: &GrayImage, x: u32, y: u32, r: u32) -> Option<Vec<u8>> {
   return Some(circle);
 }
 
-fn is_corner(i: &GrayImage, x: u32, y: u32) -> bool {
+pub fn is_corner(i: &GrayImage, x: u32, y: u32) -> bool {
   let r = 5;
   match get_circle(i, x, y, r) {
     Some(values) => {
